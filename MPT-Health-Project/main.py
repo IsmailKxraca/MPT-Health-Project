@@ -1,8 +1,21 @@
 import cv2
 
+# initialises the camera. (First Camera in System)
+cap = cv2.VideoCapture(0)
 
-def select_camera(camera):
-    pass
+while True:
+    # captures one frame of the camera
+    ret, frame = cap.read()
+
+    if not ret:
+        break
+
+    # shows the camera-input
+    cv2.imshow("Kamera", frame)
+
+    # end the loop, when "q" is clicked
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
 
 # function, which calculates the skeleton of a frame, with a CNN (PoseNet)
