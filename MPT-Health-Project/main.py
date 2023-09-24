@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import math as m
 import time
+from plyer import notification 
 
 # initialises the camera. (First Camera in System)
 cap = cv2.VideoCapture(0)
@@ -32,6 +33,12 @@ def find_angle(x1, y1, x2, y2):
     theta = m.acos((y2 - y1)*(-y1) / (m.sqrt((x2 - x1)**2 + (y2 - y1)**2) * y1))
     degree = int(180/m.pi)*theta
     return degree
+
+# A function to send alerts 
+def send_alerts(x):
+    note = notification.notify(title="WARNING", message="You are in a bad posture", timeout=10)
+    return note
+
 
 
 # output = pose-estimation via mediapipe
@@ -135,6 +142,22 @@ def pose_output():
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_shoulder_x, l_shoulder_y - 100), red, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_shoulder_x, l_shoulder_y), red, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), red, 4)
+
+        # Calculate the time of remaining in a particular posture.
+        good_time = (1 / fps) * good_frames
+        bad_time =  (1 / fps) * bad_frames
+
+        # Pose time.
+        if good_time > 0:
+            time_string_good = 'Good Posture Time : ' + str(round(good_time, 1)) + 's'
+            cv2.putText(frame, time_string_good, (10, h - 20), font, 0.9, green, 2)
+        else:
+            time_string_bad = 'Bad Posture Time : ' + str(round(bad_time, 1)) + 's'
+            cv2.putText(frame, time_string_bad, (10, h - 20), font, 0.9, red, 2)
+
+        # If you stay in bad posture for more than 3 minutes (180s) send an alert.
+        if bad_time > 20:
+            send_alerts(bad_time)
 
         # projects
         cv2.imshow("Pose Estimation", frame)
