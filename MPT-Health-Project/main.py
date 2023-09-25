@@ -14,7 +14,7 @@ font = cv2.FONT_HERSHEY_DUPLEX
 blue = (255, 127, 0)
 red = (50, 100, 255)
 green = (127, 255, 20)
-dark_blue = (127, 20, 100)
+dark_blue = (204, 0, 0)
 light_green = (127, 233, 100)
 yellow = (0, 255, 255)
 pink = (255, 0, 255)
@@ -34,11 +34,11 @@ def find_angle(x1, y1, x2, y2):
     degree = int(180/m.pi)*theta
     return degree
 
+
 # A function to send alerts 
 def send_alerts(x):
     note = notification.notify(title="WARNING", message="You are in a bad posture", timeout=10)
     return note
-
 
 
 # output = pose-estimation via mediapipe
@@ -98,29 +98,32 @@ def pose_output():
 
             # calculate angles of neck and torso inclination
             neck_inclination = find_angle(l_shoulder_x, l_shoulder_y, l_ear_x, l_ear_y)
-            torso_inclination = find_angle(l_hip_x, l_hip_y, l_shoulder_x, l_shoulder_y)
+            back_inclination = find_angle(l_hip_x, l_hip_y, l_shoulder_x, l_shoulder_y)
 
-            # draw landmarks of shoulder and ear on output
+            # draw landmark of left shoulder
             cv2.circle(frame, (l_shoulder_x, l_shoulder_y), 7, yellow, -1)
+            # draw landmark of left ear
             cv2.circle(frame, (l_ear_x, l_ear_y), 7, yellow, -1)
-
-            cv2.circle(frame, (l_shoulder_x, l_shoulder_y - 100), 7, yellow, -1)
+            # draw neck angel-help point
+            cv2.circle(frame, (l_shoulder_x, l_shoulder_y - 100), 7, dark_blue, -1)
+            # draw landmark of right shoulder
             cv2.circle(frame, (r_shoulder_x, r_shoulder_y), 7, pink, -1)
+            # draw landmark of left hip
             cv2.circle(frame, (l_hip_x, l_hip_y), 7, yellow, -1)
-
-            cv2.circle(frame, (l_hip_x, l_hip_y - 100), 7, yellow, -1)
+            # draw back-angle-help point
+            cv2.circle(frame, (l_hip_x, l_hip_y - 100), 7, dark_blue, -1)
 
             neck_angle_text_string = f"Neck :{str(int(neck_inclination))}"
-            torso_angle_text_string = f"Torso :{str(int(torso_inclination))}"
+            back_angle_text_string = f"Back :{str(int(back_inclination))}"
 
-            if neck_inclination < 40 and torso_inclination < 10:
+            if neck_inclination < 40 and back_inclination < 10:
                 bad_frames = 0
                 good_frames += 1
 
                 cv2.putText(frame, neck_angle_text_string, (10, 30), font, 0.8, light_green, 1)
-                cv2.putText(frame, torso_angle_text_string, (10, 60), font, 0.8, light_green, 1)
+                cv2.putText(frame, back_angle_text_string, (10, 60), font, 0.8, light_green, 1)
                 cv2.putText(frame, str(int(neck_inclination)), (l_shoulder_x + 10, l_shoulder_y), font, 0.9, light_green, 2)
-                cv2.putText(frame, str(int(torso_inclination)), (l_hip_x + 10, l_hip_y), font, 0.9, light_green, 2)
+                cv2.putText(frame, str(int(back_inclination)), (l_hip_x + 10, l_hip_y), font, 0.9, light_green, 2)
 
                 # connect landmarks
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_ear_x, l_ear_y), green, 4)
@@ -133,9 +136,9 @@ def pose_output():
                 bad_frames += 1
 
                 cv2.putText(frame, neck_angle_text_string, (10, 30), font, 0.8, red, 2)
-                cv2.putText(frame, torso_angle_text_string, (10, 60), font, 0.8, red, 2)
+                cv2.putText(frame, back_angle_text_string, (10, 60), font, 0.8, red, 2)
                 cv2.putText(frame, str(int(neck_inclination)), (l_shoulder_x + 10, l_shoulder_y), font, 0.9, red, 2)
-                cv2.putText(frame, str(int(torso_inclination)), (l_hip_x + 10, l_hip_y), font, 0.9, red, 2)
+                cv2.putText(frame, str(int(back_inclination)), (l_hip_x + 10, l_hip_y), font, 0.9, red, 2)
 
                 # connect landmarks
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_ear_x, l_ear_y), red, 4)
@@ -172,16 +175,6 @@ def pose_output():
 
 
 pose_output()
-
-
-# function, which evaluates the skeleton and gives it a score
-def posture_score():
-    pass
-
-
-# function, which gives alerts to the user, when the posture_score is too low.
-def score_alerts():
-    pass
 
 
 # function, which saves the posture-Score + timestamp in a csv_file
