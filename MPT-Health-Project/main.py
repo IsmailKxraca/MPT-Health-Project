@@ -2,7 +2,6 @@ import cv2
 import os
 import mediapipe as mp
 import math as m
-import time
 import pandas as pd
 import numpy as np
 from plyer import notification
