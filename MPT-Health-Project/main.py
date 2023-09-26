@@ -1,9 +1,9 @@
+# libraries to import
 import cv2
 import os
 import mediapipe as mp
 import math as m
 import pandas as pd
-import numpy as np
 from plyer import notification
 import csv
 from datetime import datetime
@@ -17,7 +17,7 @@ cap = cv2.VideoCapture(0)
 # font type
 font = cv2.FONT_HERSHEY_DUPLEX
 
-# colours
+# colours we will use in the code
 blue = (255, 127, 0)
 red = (50, 100, 255)
 green = (127, 255, 20)
@@ -26,7 +26,6 @@ light_green = (127, 233, 100)
 yellow = (0, 255, 255)
 pink = (255, 0, 255)
 
-warning = cv2.imread("posture_warning.png")
 
 # calculates the distance between two points
 def find_distance(x1, y1, x2, y2):
@@ -34,8 +33,8 @@ def find_distance(x1, y1, x2, y2):
     return dist
 
 
-# this function calculates the angle between three points, where the third point is the origin (0,0).
-# So it only needs two points as input
+# this function calculates the angle between three points
+# it only needs two points as input, because the third point is always a point exactly over the first point
 def find_angle(x1, y1, x2, y2):
     # here we use the arccosine
     theta = m.acos((y2 - y1)*(-y1) / (m.sqrt((x2 - x1)**2 + (y2 - y1)**2) * y1))
@@ -49,7 +48,7 @@ def send_alerts():
     return note
 
 
-# data is a list with timestamp and good/bad Posture
+# this functions writes the given data into the csv-file you want, given as the name-parameter
 def safe_in_csv(name, data):
     with open(f"{str(name)}.csv", mode='a', newline='') as file:
         writer = csv.writer(file)
@@ -57,6 +56,7 @@ def safe_in_csv(name, data):
 
 
 # creates a csv file for the datetime, when the code was run
+# the time-parameter, becomes the name of the file and should be the time, when the code was run
 def create_csv(time):
     header = ["Time", "Posture"]
     with open(f"{str(time)}.csv", mode="w", newline='') as file:
@@ -64,7 +64,11 @@ def create_csv(time):
         writer.writerow(header)
 
 
-# output = pose-estimation via mediapipe
+# this is the main-posture-evaluation function with the mediapipe-library.
+# we use mediapipe to identify the posture of the User
+# with help of the find_angle function we evaluate what is a good and bad posture
+# the user has to set the camera in a 90° angle on his left, so the camera can see his back and neck inclination
+# this function starts a window, where the user can see his posture + evaluation
 def pose_output():
     # initialises the Pose-Estimation-Pipeline
     mp_pose = mp.solutions.pose
@@ -74,29 +78,29 @@ def pose_output():
     good_frames = 0
     bad_frames = 0
 
+    # saves the daytime in hour:minute:second.milliseconds format
     now = datetime.now()
-
     hour = now.strftime('%H')
     minute = now.strftime('%M')
     second = now.strftime('%S')
-    millisecond = now.microsecond // 1000
 
-    start_time = f"{hour}:{minute}:{second}.{millisecond}"
     csv_name = f"{hour}_{minute}_{second}"
 
+    # runs the create_csv function to create a csv, to save the data of the new running session
     create_csv(csv_name)
 
     bad_warning = 0
 
+    # mainloop that works as long as capturing is running
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             print("There is a problem")
             break
 
-        # get fps
+        # get fps of capturing
         fps = cap.get(cv2.CAP_PROP_FPS)
-        # get height and width
+        # get height and width of frame
         h, w = frame.shape[:2]
 
         # transforming the frame to RGB
@@ -107,6 +111,7 @@ def pose_output():
 
         # results.pose_landmarks = Position of the body nodes
         if results.pose_landmarks:
+
             landmarks = results.pose_landmarks
             lm_pose = mp_pose.PoseLandmark
 
@@ -128,12 +133,13 @@ def pose_output():
             offset = find_distance(l_shoulder_x, l_shoulder_y, r_shoulder_x, r_shoulder_y)
 
             # assist to align the camera to point at the side view of the person
+            # if aligned it says "aligned" on the screen, if not than it says "not-aligned"
             if offset < 100:
                 cv2.putText(frame, str(int(offset)) + ' Aligned', (w - 175, 30), font, 0.9, green, 1)
             else:
                 cv2.putText(frame, str(int(offset)) + ' Not Aligned', (w - 250, 30), font, 0.9, red, 2)
 
-            # calculate angles of neck and torso inclination
+            # calculate angles of neck and back inclination
             neck_inclination = find_angle(l_shoulder_x, l_shoulder_y, l_ear_x, l_ear_y)
             back_inclination = find_angle(l_hip_x, l_hip_y, l_shoulder_x, l_shoulder_y)
 
@@ -150,61 +156,70 @@ def pose_output():
             # draw back-angle-help point
             cv2.circle(frame, (l_hip_x, l_hip_y - 100), 7, dark_blue, -1)
 
+            # saves the angles as strings
             neck_angle_text_string = f"Neck :{str(int(neck_inclination))}"
             back_angle_text_string = f"Back :{str(int(back_inclination))}"
 
-            frame_time = f"{datetime.now().hour}:{datetime.now().minute}:{datetime.now().second}.{datetime.now().microsecond // 1000}"
+            # frame_time-variable = the time, when the frame is captured
+            frame_time = f"{datetime.now().hour}:{datetime.now().minute}:{datetime.now().second}." \
+                         f"{datetime.now().microsecond // 1000}"
 
+            # if the posture is good (neck_inclination under 40 and back_inclination under 10)
             if neck_inclination < 40 and back_inclination < 10:
                 bad_frames = 0
                 good_frames += 1
 
+                # puts a green text on the screen which says, that the posture is good and shows the angles
                 cv2.putText(frame, neck_angle_text_string, (10, 30), font, 0.8, light_green, 1)
                 cv2.putText(frame, back_angle_text_string, (10, 60), font, 0.8, light_green, 1)
-                cv2.putText(frame, str(int(neck_inclination)), (l_shoulder_x + 10, l_shoulder_y), font, 0.9, light_green, 2)
+                cv2.putText(frame, str(int(neck_inclination)), (l_shoulder_x + 10, l_shoulder_y), font, 0.9,
+                            light_green, 2)
                 cv2.putText(frame, str(int(back_inclination)), (l_hip_x + 10, l_hip_y), font, 0.9, light_green, 2)
 
-                # connect landmarks
+                # connect landmarks with a green line
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_ear_x, l_ear_y), green, 4)
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_shoulder_x, l_shoulder_y - 100), green, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_shoulder_x, l_shoulder_y), green, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), green, 4)
 
-                # save the datetime as good
+                # save the datetime as good in the csv-file
                 safe_in_csv(csv_name, [frame_time, "good"])
 
+            # else: if the neck_inclination is over 40 degrees or the back_inclination is over 10 degrees, which means
+            # that it is a bad posture.
             else:
                 good_frames = 0
                 bad_frames += 1
 
+                # makes the text on the screen go red
                 cv2.putText(frame, neck_angle_text_string, (10, 30), font, 0.8, red, 2)
                 cv2.putText(frame, back_angle_text_string, (10, 60), font, 0.8, red, 2)
                 cv2.putText(frame, str(int(neck_inclination)), (l_shoulder_x + 10, l_shoulder_y), font, 0.9, red, 2)
                 cv2.putText(frame, str(int(back_inclination)), (l_hip_x + 10, l_hip_y), font, 0.9, red, 2)
 
-                # connect landmarks
+                # connect landmarks with a red line
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_ear_x, l_ear_y), red, 4)
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_shoulder_x, l_shoulder_y - 100), red, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_shoulder_x, l_shoulder_y), red, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), red, 4)
 
-                # save the datetime as bad
+                # save the datetime as bad in csv-file
                 safe_in_csv(csv_name, [frame_time, "bad"])
 
-        # Calculate the time of remaining in a particular posture.
+        # calculates the time the user remains in a particular (good or bad) posture
         good_time = (1 / fps) * good_frames
         bad_time = (1 / fps) * bad_frames
 
-
-        # pose time
+        # it will write the time the user remains in the good posture on screen (green)
         if good_time > 0:
             time_string_good = 'Good Posture Time : ' + str(round(good_time, 1)) + 's'
             cv2.putText(frame, time_string_good, (10, h - 20), font, 0.9, green, 2)
+        # it will write the time the user remains in the bad posture on screen (red)
         else:
             time_string_bad = 'Bad Posture Time : ' + str(round(bad_time, 1)) + 's'
             cv2.putText(frame, time_string_bad, (10, h - 20), font, 0.9, red, 2)
 
-        # If you stay in bad posture for more than 20 seconds send an alert
+        # sends an alert, if the bad-posture-time is more than 20 seconds
         if bad_time > 20:
             if bad_warning == 0:
                 send_alerts()
@@ -212,7 +227,7 @@ def pose_output():
         else:
             bad_warning = 0
 
-        # projects
+        # projects the frame in a window
         cv2.imshow("Pose Estimation", frame)
 
         # loop ends when clicked on esc or q
@@ -244,9 +259,10 @@ def delete_old_csv_files():
             os.remove(file_path)
 
 
-# function, which displays the csv_file as a dashboard. The Posture-Score of the day will be shown.
+# function, which displays a posture_csv_file as a line-diagram
 def dashboard(file_name):
     df = pd.read_csv(file_name, delimiter=",")
+    # replaces good and bad with 1 and 2 respectively
     df['Posture'] = df['Posture'].replace({'good': 1, 'bad': 2})
 
     # create line-plot
@@ -255,7 +271,7 @@ def dashboard(file_name):
     x = df['Time']
     y = df['Posture']
 
-    # change y-axis, that 1 is good and 2 is bad
+    # change labeling of y-axis, that 1 is good and 2 is bad
     plt.yticks([1, 2], ['good', 'bad'])
 
     border = 1.5
@@ -283,42 +299,46 @@ def dashboard(file_name):
     st.pyplot()
 
 
+# plots all of the csv-files of the last 24 hours on the streamlit report page
 def show_24h_dashboard():
     files = os.listdir()
     # all csv-files
     csv_files = [file for file in files if file.endswith(".csv")]
 
     for file in csv_files:
-        df = pd.read_csv(file, delimiter=",")
         st.subheader(f"Report of {file[0:2]}:{file[3:5]} o'clock")
-
         dashboard(file)
 
 
+# the main function for our streamlit website
 def main():
     """MPT-Health_project"""
 
+    # create a sidebar with the pages Start and Report
     menu = ["Start", "Report"]
     choice = st.sidebar.selectbox("Menu", menu)
+
+    # the Start-page
     if choice == "Start":
+        # design/text of start-page
         st.title("Detecting Good and Bad Postures")
         st.subheader(" About our Project")
-        st.write(
-            " Our Project consist of detecting if someone has a bad posture in real-time using advanced methods and "
-            "sending alerts to the person saying he has to change his position")
+        st.write(" Our Project consist of detecting if someone has a bad posture in real-time using advanced methods "
+                 "and sending alerts to the person saying he has to change his position")
         st.write("This is mainly done by calculating the the angle of inclination of the neck and the back. "
                  "If the neck is inclined at an angle of 40 degrees and the back at 10 degrees, then the person has a "
                  "bad position according to ergonomics rules")
         if st.button("Click to Start"):
             pose_output()
 
+    # report page
     if choice == "Report":
+        # deleting old files when clicked on page
         delete_old_csv_files()
         st.title("Report of the last 24 Hours")
+        # showing all plots of last 24 hours
         show_24h_dashboard()
 
 
+# running main
 main()
-#pose_output()
-#dashboard()
-#show_24h_dashboard()
