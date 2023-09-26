@@ -1,8 +1,16 @@
 import cv2
+import os
 import mediapipe as mp
 import math as m
 import time
-from plyer import notification 
+import pandas as pd
+import numpy as np
+from plyer import notification
+import csv
+from datetime import datetime
+import matplotlib.pyplot as plt
+import streamlit as st
+
 
 # initialises the camera. (First Camera in System)
 cap = cv2.VideoCapture(0)
@@ -19,6 +27,7 @@ light_green = (127, 233, 100)
 yellow = (0, 255, 255)
 pink = (255, 0, 255)
 
+warning = cv2.imread("posture_warning.png")
 
 # calculates the distance between two points
 def find_distance(x1, y1, x2, y2):
@@ -36,9 +45,24 @@ def find_angle(x1, y1, x2, y2):
 
 
 # A function to send alerts 
-def send_alerts(x):
+def send_alerts():
     note = notification.notify(title="WARNING", message="You are in a bad posture", timeout=10)
     return note
+
+
+# data is a list with timestamp and good/bad Posture
+def safe_in_csv(name, data):
+    with open(f"{str(name)}.csv", mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(data)
+
+
+# creates a csv file for the datetime, when the code was run
+def create_csv(time):
+    header = ["Time", "Posture"]
+    with open(f"{str(time)}.csv", mode="w", newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(header)
 
 
 # output = pose-estimation via mediapipe
@@ -50,6 +74,20 @@ def pose_output():
     # initialise frame counters for good and bad posture time
     good_frames = 0
     bad_frames = 0
+
+    now = datetime.now()
+
+    hour = now.strftime('%H')
+    minute = now.strftime('%M')
+    second = now.strftime('%S')
+    millisecond = now.microsecond // 1000
+
+    start_time = f"{hour}:{minute}:{second}.{millisecond}"
+    csv_name = f"{hour}_{minute}_{second}"
+
+    create_csv(csv_name)
+
+    bad_warning = 0
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -116,6 +154,8 @@ def pose_output():
             neck_angle_text_string = f"Neck :{str(int(neck_inclination))}"
             back_angle_text_string = f"Back :{str(int(back_inclination))}"
 
+            frame_time = f"{datetime.now().hour}:{datetime.now().minute}:{datetime.now().second}.{datetime.now().microsecond // 1000}"
+
             if neck_inclination < 40 and back_inclination < 10:
                 bad_frames = 0
                 good_frames += 1
@@ -130,6 +170,9 @@ def pose_output():
                 cv2.line(frame, (l_shoulder_x, l_shoulder_y), (l_shoulder_x, l_shoulder_y - 100), green, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_shoulder_x, l_shoulder_y), green, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), green, 4)
+
+                # save the datetime as good
+                safe_in_csv(csv_name, [frame_time, "good"])
 
             else:
                 good_frames = 0
@@ -146,11 +189,15 @@ def pose_output():
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_shoulder_x, l_shoulder_y), red, 4)
                 cv2.line(frame, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), red, 4)
 
+                # save the datetime as bad
+                safe_in_csv(csv_name, [frame_time, "bad"])
+
         # Calculate the time of remaining in a particular posture.
         good_time = (1 / fps) * good_frames
-        bad_time =  (1 / fps) * bad_frames
+        bad_time = (1 / fps) * bad_frames
 
-        # Pose time.
+
+        # pose time
         if good_time > 0:
             time_string_good = 'Good Posture Time : ' + str(round(good_time, 1)) + 's'
             cv2.putText(frame, time_string_good, (10, h - 20), font, 0.9, green, 2)
@@ -158,9 +205,13 @@ def pose_output():
             time_string_bad = 'Bad Posture Time : ' + str(round(bad_time, 1)) + 's'
             cv2.putText(frame, time_string_bad, (10, h - 20), font, 0.9, red, 2)
 
-        # If you stay in bad posture for more than 3 minutes (180s) send an alert.
+        # If you stay in bad posture for more than 20 seconds send an alert
         if bad_time > 20:
-            send_alerts(bad_time)
+            if bad_warning == 0:
+                send_alerts()
+                bad_warning = 1
+        else:
+            bad_warning = 0
 
         # projects
         cv2.imshow("Pose Estimation", frame)
@@ -174,14 +225,101 @@ def pose_output():
     cv2.destroyAllWindows()
 
 
-pose_output()
+# deletes all csv-files in the folder, which are older than 24h
+def delete_old_csv_files():
 
+    current_time = datetime.now()
+    files = os.listdir()
+    # all csv-files
+    csv_files = [file for file in files if file.endswith(".csv")]
 
-# function, which saves the posture-Score + timestamp in a csv_file
-def posture_score_csv():
-    pass
+    for file in csv_files:
+        file_path = os.path.join(os.getcwd(), file)
+        file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+
+        # calculate the time-difference
+        time_difference = current_time - file_time
+
+        # if the difference is more than 24 hours, delete the file
+        if time_difference.total_seconds() > 24 * 3600:
+            os.remove(file_path)
 
 
 # function, which displays the csv_file as a dashboard. The Posture-Score of the day will be shown.
-def dashboard(file):
-    pass
+def dashboard(file_name):
+    df = pd.read_csv(file_name, delimiter=",")
+    df['Posture'] = df['Posture'].replace({'good': 1, 'bad': 2})
+
+    # create line-plot
+    plt.figure(figsize=(10, 6))
+
+    x = df['Time']
+    y = df['Posture']
+
+    # change y-axis, that 1 is good and 2 is bad
+    plt.yticks([1, 2], ['good', 'bad'])
+
+    border = 1.5
+    colors = []
+    # fills colors with red, if the value is over 1.5 (bad posture) and green if its under 1.5 (good posture)
+    for yi in y:
+        if yi > border:
+            colors.append('red')
+        else:
+            colors.append('green')
+
+    # plot the line-plot and scatter plot
+    plt.plot(x, y, marker='o', linestyle='-')
+    plt.scatter(x, y, marker='o', color=colors, zorder=2)
+
+    # axis-labels
+    plt.xlabel('Time')
+    plt.ylabel('Posture')
+
+    # show plot
+    plt.title(file_name[:-4])
+    plt.grid(True)
+    plt.tight_layout()
+    st.set_option('deprecation.showPyplotGlobalUse', False)
+    st.pyplot()
+
+
+def show_24h_dashboard():
+    files = os.listdir()
+    # all csv-files
+    csv_files = [file for file in files if file.endswith(".csv")]
+
+    for file in csv_files:
+        df = pd.read_csv(file, delimiter=",")
+        st.subheader(f"Report of {file[0:2]}:{file[3:5]} o'clock")
+
+        dashboard(file)
+
+
+def main():
+    """MPT-Health_project"""
+
+    menu = ["Start", "Report"]
+    choice = st.sidebar.selectbox("Menu", menu)
+    if choice == "Start":
+        st.title("Detecting Good and Bad Postures")
+        st.subheader(" About our Project")
+        st.write(
+            " Our Project consist of detecting if someone has a bad posture in real-time using advanced methods and "
+            "sending alerts to the person saying he has to change his position")
+        st.write("This is mainly done by calculating the the angle of inclination of the neck and the back. "
+                 "If the neck is inclined at an angle of 40 degrees and the back at 10 degrees, then the person has a "
+                 "bad position according to ergonomics rules")
+        if st.button("Click to Start"):
+            pose_output()
+
+    if choice == "Report":
+        delete_old_csv_files()
+        st.title("Report of the last 24 Hours")
+        show_24h_dashboard()
+
+
+main()
+#pose_output()
+#dashboard()
+#show_24h_dashboard()
